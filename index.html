@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Cry & Cue Multimodal Translator</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+* { font-family: 'Nunito', sans-serif; -webkit-tap-highlight-color: transparent; }
+body { background: #FFF8F0; min-height: 100vh; }
+
+.gradient-bg { background: linear-gradient(135deg, #FF9A9E 0%, #FECFEF 50%, #A18CD1 100%); }
+.card-shadow { box-shadow: 0 4px 20px rgba(161, 140, 209, 0.15); }
+.pulse-ring { animation: pulseRing 2s ease-out infinite; }
+@keyframes pulseRing {
+  0% { transform: scale(0.8); opacity: 1; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+.pulse-dot { animation: pulseDot 2s ease-out infinite; }
+@keyframes pulseDot {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+}
+.recording-btn { position: relative; }
+.recording-btn .ring {
+  position: absolute; inset: -8px; border-radius: 50%;
+  border: 3px solid #FF6B6B; opacity: 0; pointer-events: none;
+}
+.recording-btn.active .ring { animation: pulseRing 1.5s ease-out infinite; }
+.recording-btn.active { animation: pulseDot 1s ease-in-out infinite; }
+
+.fade-in { animation: fadeIn 0.4s ease-out; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+
+.slide-up { animation: slideUp 0.5s ease-out; }
+@keyframes slideUp { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: translateY(0); } }
+
+.progress-bar { transition: width 0.5s ease; }
+
+.cause-card { transition: all 0.3s ease; }
+.cause-card:hover { transform: translateY(-2px); }
+
+.onboarding-overlay { backdrop-filter: blur(8px); }
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-thumb { background: #A18CD1; border-radius: 4px; }
+
+.wave-bar { animation: waveBar 0.6s ease-in-out infinite alternate; }
+@keyframes waveBar { 0% { height: 8px; } 100% { height: 28px; } }
+
+.spinner { border: 3px solid rgba(255,255,255,0.3); border-top: 3px solid white; border-radius: 50%; width: 24px; height: 24px; animation: spin 0.8s linear infinite; display: inline-block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+input[type="file"] { display: none; }
+</style>
+</head>
+<body class="pb-24">
+
+<!-- Global AI metrics -->
+<script>
+window.aiMetrics = {
+  totalInputTokens: 0,
+  totalOutputTokens: 0,
+  totalTime: 0,
+  aliasTimes: {}
+};
+</script>
+
+<!-- Onboarding Overlay -->
+<div id="onboarding" class="fixed inset-0 z-50 onboarding-overlay bg-black/40 flex items-end justify-center" style="display:none;">
+  <div class="bg-white rounded-t-3xl w-full max-w-lg p-6 pb-8 slide-up">
+    <div class="text-center mb-4">
+      <div class="text-5xl mb-3">👶🍼</div>
+      <h2 class="text-2xl font-extrabold text-gray-800">Welcome to Cry & Cue!</h2>
+      <p class="text-gray-500 mt-2 text-sm leading-relaxed">Your AI-powered baby translator that helps you understand what your little one needs — fast.</p>
+    </div>
+    <div class="space-y-3 mb-6">
+      <div class="flex items-start gap-3 bg-purple-50 rounded-xl p-3">
+        <span class="text-2xl">🎙️</span>
+        <div><p class="font-bold text-sm text-gray-700">Record or Upload</p><p class="text-xs text-gray-500">Capture a cry or upload audio/video</p></div>
+      </div>
+      <div class="flex items-start gap-3 bg-pink-50 rounded-xl p-3">
+        <span class="text-2xl">🧠</span>
+        <div><p class="font-bold text-sm text-gray-700">AI Analysis</p><p class="text-xs text-gray-500">Multimodal AI classifies cry cause + body cues</p></div>
+      </div>
+      <div class="flex items-start gap-3 bg-orange-50 rounded-xl p-3">
+        <span class="text-2xl">💡</span>
+        <div><p class="font-bold text-sm text-gray-700">Action Steps</p><p class="text-xs text-gray-500">Get prioritized suggestions & calming scripts</p></div>
+      </div>
+    </div>
+    <div class="mb-4">
+      <label class="block text-sm font-bold text-gray-700 mb-1">Baby's Name (optional)</label>
+      <input id="onboard-name" type="text" placeholder="e.g. Luna 🌙" class="w-full border-2 border-purple-200 rounded-xl px-4 py-3 text-sm focus:border-purple-400 focus:outline-none">
+    </div>
+    <div class="mb-5">
+      <label class="block text-sm font-bold text-gray-700 mb-1">Age in Months</label>
+      <input id="onboard-age" type="number" min="0" max="36" placeholder="e.g. 3" class="w-full border-2 border-purple-200 rounded-xl px-4 py-3 text-sm focus:border-purple-400 focus:outline-none">
+    </div>
+    <button onclick="completeOnboarding()" class="w-full gradient-bg text-white font-bold py-4 rounded-2xl text-lg active:scale-95 transition-transform">
+      Let's Get Started! 🚀
+    </button>
+  </div>
+</div>
+
+<!-- Header -->
+<header class="gradient-bg px-4 pt-6 pb-8 rounded-b-3xl card-shadow">
+  <div class="max-w-lg mx-auto">
+    <div class="flex items-center justify-between">
+      <div>
+        <h1 class="text-white font-extrabold text-xl tracking-tight">Cry & Cue 👶</h1>
+        <p class="text-white/80 text-xs mt-0.5" id="baby-greeting">Multimodal Translator</p>
+      </div>
+      <div class="flex gap-2">
+        <button onclick="showHistory()" class="bg-white/20 backdrop-blur text-white w-10 h-10 rounded-full flex items-center justify-center text-lg active:scale-90 transition-transform" title="History">📋</button>
+        <button onclick="showSettings()" class="bg-white/20 backdrop-blur text-white w-10 h-10 rounded-full flex items-center justify-center text-lg active:scale-90 transition-transform" title="Settings">⚙️</button>
+      </div>
+    </div>
+    <!-- Quick Status -->
+    <div id="quick-status" class="mt-4 bg-white/20 backdrop-blur rounded-2xl px-4 py-3 flex items-center gap-3">
+      <span class="text-2xl">😴</span>
+      <div>
+        <p class="text-white text-sm font-bold">Ready to listen</p>
+        <p class="text-white/70 text-xs">Tap the big button below to start</p>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- Main Content -->
+<main class="max-w-lg mx-auto px-4 mt-6 space-y-4">
+
+  <!-- Record Section -->
+  <div id="record-section" class="text-center fade-in">
+    <p class="text-gray-500 text-sm mb-6">Record a cry or describe what you observe 👀</p>
+    
+    <!-- Big Record Button -->
+    <div class="flex justify-center mb-6">
+      <button id="record-btn" onclick="toggleRecording()" class="recording-btn w-28 h-28 rounded-full gradient-bg flex items-center justify-center card-shadow active:scale-95 transition-transform">
+        <span class="ring"></span>
+        <span id="record-icon" class="text-white text-4xl">🎙️</span>
+      </button>
+    </div>
+    
+    <!-- Audio Wave Visualization -->
+    <div id="wave-viz" class="flex items-center justify-center gap-1 h-8 mb-4" style="display:none;">
+      <div class="wave-bar w-1 bg-purple-400 rounded-full" style="animation-delay:0s;"></div>
+      <div class="wave-bar w-1 bg-pink-400 rounded-full" style="animation-delay:0.1s;"></div>
+      <div class="wave-bar w-1 bg-purple-400 rounded-full" style="animation-delay:0.2s;"></div>
+      <div class="wave-bar w-1 bg-pink-400 rounded-full" style="animation-delay:0.3s;"></div>
+      <div class="wave-bar w-1 bg-purple-400 rounded-full" style="animation-delay:0.4s;"></div>
+      <div class="wave-bar w-1 bg-pink-400 rounded-full" style="animation-delay:0.15s;"></div>
+      <div class="wave-bar w-1 bg-purple-400 rounded-full" style="animation-delay:0.25s;"></div>
+      <div class="wave-bar w-1 bg-pink-400 rounded-full" style="animation-delay:0.35s;"></div>
+    </div>
+    
+    <p id="record-status" class="text-gray-400 text-xs mb-4"></p>
+
+    <!-- OR divider -->
+    <div class="flex items-center gap-3 my-4">
+      <div class="flex-1 h-px bg-gray-200"></div>
+      <span class="text-gray-400 text-xs font-bold">OR</span>
+      <div class="flex-1 h-px bg-gray-200"></div>
+    </div>
+
+    <!-- Upload & Describe -->
+    <div class="grid grid-cols-2 gap-3 mb-4">
+      <label class="cursor-pointer bg-white rounded-2xl p-4 card-shadow flex flex-col items-center gap-2 active:scale-95 transition-transform border-2 border-transparent hover:border-purple-200">
+        <span class="text-2xl">📁</span>
+        <span class="text-xs font-bold text-gray-600">Upload File</span>
+        <input type="file" id="file-upload" accept="audio/*,video/*" onchange="handleFileUpload(event)">
+      </label>
+      <button onclick="showDescribeMode()" class="bg-white rounded-2xl p-4 card-shadow flex flex-col items-center gap-2 active:scale-95 transition-transform border-2 border-transparent hover:border-purple-200">
+        <span class="text-2xl">✏️</span>
+        <span class="text-xs font-bold text-gray-600">Describe Cues</span>
+      </button>
+    </div>
+
+    <!-- Describe Input -->
+    <div id="describe-section" class="bg-white rounded-2xl p-4 card-shadow" style="display:none;">
+      <textarea id="describe-input" rows="3" placeholder="Describe what you see and hear...&#10;e.g. 'High-pitched cry, arching back, fists clenched, red face, been crying 10 min'" class="w-full border-2 border-purple-100 rounded-xl px-3 py-2 text-sm focus:border-purple-300 focus:outline-none resize-none"></textarea>
+      <div class="flex gap-2 mt-3">
+        <button onclick="addQuickCue('High-pitched cry')" class="text-xs bg-purple-50 text-purple-600 px-3 py-1.5 rounded-full font-bold">High pitch</button>
+        <button onclick="addQuickCue('Arching back')" class="text-xs bg-pink-50 text-pink-600 px-3 py-1.5 rounded-full font-bold">Arching</button>
+        <button onclick="addQuickCue('Clenched fists')" class="text-xs bg-orange-50 text-orange-600 px-3 py-1.5 rounded-full font-bold">Fists</button>
+        <button onclick="addQuickCue('Red face')" class="text-xs bg-red-50 text-red-600 px-3 py-1.5 rounded-full font-bold">Red face</button>
+      </div>
+      <div class="flex gap-2 mt-2">
+        <button onclick="addQuickCue('Rubbing eyes')" class="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-full font-bold">Rub eyes</button>
+        <button onclick="addQuickCue('Rooting/sucking')" class="text-xs bg-green-50 text-green-600 px-3 py-1.5 rounded-full font-bold">Rooting</button>
+        <button onclick="addQuickCue('Pulling legs up')" class="text-xs bg-yellow-50 text-yellow-700 px-3 py-1.5 rounded-full font-bold">Legs up</button>
+      </div>
+      <button onclick="analyzeDescription()" class="w-full mt-4 gradient-bg text-white font-bold py-3 rounded-xl active:scale-95 transition-transform flex items-center justify-center gap-2">
+        <span>Analyze Cues</span> <span>🔍</span>
+      </button>
+    </div>
+
+    <!-- Context Quick Inputs -->
+    <div class="bg-white rounded-2xl p-4 card-shadow mt-3">
+      <p class="text-xs font-bold text-gray-500 mb-3">📝 Quick Context (helps accuracy)</p>
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label class="text-xs text-gray-400">Last fed</label>
+          <select id="ctx-fed" class="w-full border border-gray-200 rounded-lg px-2 py-2 text-xs">
+            <option value="">Unknown</option>
+            <option value="<30 min ago">&lt;30 min ago</option>
+            <option value="1 hour ago">1 hour ago</option>
+            <option value="2 hours ago">2 hours ago</option>
+            <option value="3+ hours ago">3+ hours ago</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-xs text-gray-400">Last nap</label>
+          <select id="ctx-nap" class="w-full border border-gray-200 rounded-lg px-2 py-2 text-xs">
+            <option value="">Unknown</option>
+            <option value="<30 min ago">&lt;30 min ago</option>
+            <option value="1 hour ago">1 hour ago</option>
+            <option value="2 hours ago">2 hours ago</option>
+            <option value="3+ hours ago">3+ hours ago</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-xs text-gray-400">Diaper</label>
+          <select id="ctx-diaper" class="w-full border border-gray-200 rounded-lg px-2 py-2 text-xs">
+            <option value="">Unknown</option>
+            <option value="Just changed">Just changed</option>
+            <option value="1 hour ago">1 hour ago</option>
+            <option value="2+ hours ago">2+ hours ago</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-xs text-gray-400">Temperature</label>
+          <select id="ctx-temp" class="w-full border border-gray-200 rounded-lg px-2 py-2 text-xs">
+            <option value="">Normal</option>
+            <option value="Warm room">Warm room</option>
+            <option value="Cool room">Cool room</option>
+            <option value="Baby feels warm">Baby feels warm</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading / Analyzing -->
+  <div id="analyzing-section" class="text-center py-12 fade-in" style="display:none;">
+    <div class="inline-block mb-4">
+      <div class="w-20 h-20 rounded-full gradient-bg flex items-center justify-center pulse-dot">
+        <span class="text-3xl">🧠</span>
+      </div>
+    </div>
+    <p class="text-gray-700 font-bold text-lg" id="analyzing-text">Analyzing cry patterns...</p>
+    <p class="text-gray-400 text-sm mt-1" id="analyzing-sub">Combining audio + visual cues with AI</p>
+    <div class="w-48 mx-auto mt-4 bg-gray-200 rounded-full h-2 overflow-hidden">
+      <div id="progress-bar" class="progress-bar h-full gradient-bg rounded-full" style="width:0%"></div>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div id="results-section" style="display:none;" class="space-y-4 slide-up">
+    <!-- Primary Cause -->
+    <div id="primary-cause" class="bg-white rounded-2xl p-5 card-shadow">
+      <!-- filled dynamically -->
+    </div>
+
+    <!-- All Causes -->
+    <div id="all-causes" class="space-y-2">
+      <!-- filled dynamically -->
+    </div>
+
+    <!-- Action Steps -->
+    <div id="action-steps" class="bg-white rounded-2xl p-5 card-shadow">
+      <h3 class="font-bold text-gray-700 text-sm mb-3">💡 Recommended Actions</h3>
+      <div id="action-list" class="space-y-2"></div>
+    </div>
+
+    <!-- Calming Script -->
+    <div id="calming-script" class="bg-purple-50 rounded-2xl p-5 card-shadow">
+      <h3 class="font-bold text-purple-700 text-sm mb-2">🎵 Calming Script</h3>
+      <p id="calming-text" class="text-purple-600 text-sm leading-relaxed italic"></p>
+    </div>
+
+    <!-- Pediatric Alert -->
+    <div id="pediatric-alert" class="bg-red-50 border-2 border-red-200 rounded-2xl p-5" style="display:none;">
+      <h3 class="font-bold text-red-700 text-sm mb-2">⚠️ Pediatric Alert</h3>
+      <p id="alert-text" class="text-red-600 text-sm leading-relaxed"></p>
+    </div>
+
+    <!-- Feedback -->
+    <div class="bg-white rounded-2xl p-5 card-shadow">
+      <p class="text-sm font-bold text-gray-600 mb-3">Was this accurate? Help me learn! 🎯</p>
+      <div class="flex gap-2 flex-wrap">
+        <button onclick="submitFeedback('hunger')" class="text-xs bg-orange-50 text-orange-600 px-4 py-2 rounded-full font-bold active:scale-95 transition-transform">🍼 Hunger</button>
+        <button onclick="submitFeedback('tired')" class="text-xs bg-blue-50 text-blue-600 px-4 py-2 rounded-full font-bold active:scale-95 transition-transform">😴 Tired</button>
+        <button onclick="submitFeedback('pain')" class="text-xs bg-red-50 text-red-600 px-4 py-2 rounded-full font-bold active:scale-95 transition-transform">😣 Pain</button>
+        <button onclick="submitFeedback('diaper')" class="text-xs bg-green-50 text-green-600 px-4 py-2 rounded-full font-bold active:scale-95 transition-transform">🧷 Diaper</button>
+        <button onclick="submitFeedback('overstimulated')" class="text-xs bg-purple-50 text-purple-600 px-4 py-2 rounded-full font-bold active:scale-95 transition-transform">🌀 Overstimulated</button>
+        <button onclick="submitFeedback('other')" class="text-xs bg-gray-50 text-gray-600 px-4 py-2 rounded-full font-bold active:scale-95 transition-transform">❓ Other</button>
+      </div>
+    </div>
+
+    <!-- New Analysis -->
+    <button onclick="resetToRecord()" class="w-full bg-white rounded-2xl py-4 card-shadow text-center font-bold text-purple-600 active:scale-95 transition-transform">
+      🔄 New Analysis
+    </button>
+  </div>
+
+  <!-- History Panel -->
+  <div id="history-section" style="display:none;" class="fade-in">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="font-extrabold text-gray-800 text-lg">📋 Analysis History</h2>
+      <button onclick="hideHistory()" class="text-purple-600 font-bold text-sm">← Back</button>
+    </div>
+    <div id="history-list" class="space-y-3"></div>
+    <p id="history-empty" class="text-center text-gray-400 text-sm py-8">No analyses yet. Start by recording a cry! 👶</p>
+  </div>
+
+  <!-- Settings Panel -->
+  <div id="settings-section" style="display:none;" class="fade-in">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="font-extrabold text-gray-800 text-lg">⚙️ Settings</h2>
+      <button onclick="hideSettings()" class="text-purple-600 font-bold text-sm">← Back</button>
+    </div>
+    <div class="bg-white rounded-2xl p-5 card-shadow space-y-4">
+      <div>
+        <label class="text-sm font-bold text-gray-700">Baby's Name</label>
+        <input id="setting-name" type="text" placeholder="e.g. Luna" class="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-sm mt-1 focus:border-purple-300 focus:outline-none">
+      </div>
+      <div>
+        <label class="text-sm font-bold text-gray-700">Age (months)</label>
+        <input id="setting-age" type="number" min="0" max="36" placeholder="e.g. 3" class="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-sm mt-1 focus:border-purple-300 focus:outline-none">
+      </div>
+      <div>
+        <label class="text-sm font-bold text-gray-700">Known Sensitivities</label>
+        <textarea id="setting-notes" rows="2" placeholder="e.g. Lactose sensitive, hates car rides..." class="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-sm mt-1 focus:border-purple-300 focus:outline-none resize-none"></textarea>
+      </div>
+      <button onclick="saveSettings()" class="w-full gradient-bg text-white font-bold py-3 rounded-xl active:scale-95 transition-transform">Save Settings 💾</button>
+      <button onclick="clearAllData()" class="w-full bg-red-50 text-red-500 font-bold py-3 rounded-xl active:scale-95 transition-transform text-sm">Clear All Data</button>
+    </div>
+    <div class="bg-white rounded-2xl p-5 card-shadow mt-4">
+      <h3 class="font-bold text-gray-700 text-sm mb-2">📊 Baseline Stats</h3>
+      <p id="baseline-stats" class="text-gray-500 text-xs"></p>
+    </div>
+  </div>
+</main>
+
+<!-- Toast -->
+<div id="toast" class="fixed top-4 left-1/2 -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded-2xl text-sm font-bold z-50 card-shadow" style="display:none; transition: all 0.3s;"></div>
+
+<script>
+(function() {
+  // ---- State ----
+  let state = {
+    babyName: '',
+    babyAge: '',
+    notes: '',
+    history: [],
+    feedbackHistory: [],
+    onboarded: false
+  };
+
+  let mediaRecorder = null;
+  let audioChunks = [];
+  let isRecording = false;
+  let recordingTimer = null;
+  let recordingSeconds = 0;
+
+  // ---- Load State ----
+  function loadState() {
+    try {
+      const saved = localStorage.getItem('crycue_state');
+      if (saved) {
+        state = { ...state, ...JSON.parse(saved) };
+      }
+    } catch(e) {}
+  }
+
+  function saveState() {
+    try {
+      localStorage.setItem('crycue_state', JSON.stringify(state));
+    } catch(e) {}
+  }
+
+  // ---- Init ----
+  loadState();
+  if (!state.onboarded) {
+    document.getElementById('onboarding').style.display = 'flex';
+  } else {
+    updateGreeting();
+  }
+
+  // ---- AI Call Helper ----
+  async function callAI(alias, params, retries = 3) {
+    const startTime = Date.now();
+    for (let attempt = 0; attempt < retries; attempt++) {
+      try {
+        const res = await fetch('https://16504442930.work/run_prompt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ alias, params })
+        });
+        const data = await res.json();
+        if (data.error) {
+          if (attempt === retries - 1) {
+            const friendly = await formatErrorFriendly(JSON.stringify(data));
+            throw new Error(friendly);
+          }
+          continue;
+        }
+        const elapsed = Date.now() - startTime;
+        window.aiMetrics.totalTime += elapsed;
+        if (!window.aiMetrics.aliasTimes[alias]) window.aiMetrics.aliasTimes[alias] = 0;
+        window.aiMetrics.aliasTimes[alias] += elapsed;
+        if (data.input_tokens) window.aiMetrics.totalInputTokens += data.input_tokens;
+        if (data.output_tokens) window.aiMetrics.totalOutputTokens += data.output_tokens;
+        return data;
+      } catch(e) {
+        if (attempt === retries - 1) throw e;
+      }
+    }
+  }
+
+  async function formatErrorFriendly(errorStr) {
+    try {
+      const res = await fetch('https://16504442930.work/run_prompt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          alias: 'genericAI',
+          params: {
+            prompt: `You are a friendly error message formatter for a baby cry analysis app. 
+Reformat this error into a user-friendly message that empowers the user to fix it. 
+Include the full original error for reference.
+Original error: ${errorStr}
+Return JSON with exactly this structure: {"friendlyMessage": string (the user-friendly error message), "originalError": string (the full original error)}`
+          }
+        })
+      });
+      const data = await res.json();
+      return data.friendlyMessage || 'Something went wrong. Please try again in a moment. 💫';
+    } catch(e2) {
+      return 'Oops! Something went wrong. Please try again. If it persists, check your connection. 📡\n\nOriginal: ' + errorStr;
+    }
+  }
+
+  // ---- Onboarding ----
+  window.completeOnboarding = function() {
+    state.babyName = document.getElementById('onboard-name').value.trim();
+    state.babyAge = document.getElementById('onboard-age').value.trim();
+    state.onboarded = true;
+    saveState();
+    document.getElementById('onboarding').style.display = 'none';
+    updateGreeting();
+    showToast('Welcome! 🎉 Let\'s decode those cries!');
+  };
+
+  function updateGreeting() {
+    const el = document.getElementById('baby-greeting');
+    if (state.babyName) {
+      el.textContent = `Listening for ${state.babyName} ${state.babyAge ? '• ' + state.babyAge + 'mo' : ''}`;
+    } else {
+      el.textContent = 'Multimodal Translator';
+    }
+  }
+
+  // ---- Recording ----
+  window.toggleRecording = async function() {
+    if (isRecording) {
+      stopRecording();
+    } else {
+      startRecording();
+    }
+  };
+
+  async function startRecording() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(stream);
+      audioChunks = [];
+      
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunks.push(e.data);
+      };
+      
+      mediaRecorder.onstop = () => {
+        stream.getTracks().forEach(t => t.stop());
+        if (audioChunks.length > 0) {
+          processRecordedAudio();
+        }
+      };
+      
+      mediaRecorder.start();
+      isRecording = true;
+      recordingSeconds = 0;
+      
+      const btn = document.getElementById('record-btn');
+      btn.classList.add('active');
+      document.getElementById('record-icon').textContent = '⏹️';
+      document.getElementById('wave-viz').style.display = 'flex';
+      
+      recordingTimer = setInterval(() => {
+        recordingSeconds++;
+        document.getElementById('record-status').textContent = `Recording... ${recordingSeconds}s (tap to stop)`;
+        if (recordingSeconds >= 30) {
+          stopRecording();
+        }
+      }, 1000);
+      
+      document.getElementById('record-status').textContent = 'Recording... 0s (tap to stop)';
+    } catch(e) {
+      showToast('🎙️ Microphone access needed! Check permissions.');
+    }
+  }
+
+  function stopRecording() {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.stop();
+    }
+    isRecording = false;
+    clearInterval(recordingTimer);
+    
+    const btn = document.getElementById('record-btn');
+    btn.classList.remove('active');
+    document.getElementById('record-icon').textContent = '🎙️';
+    document.getElementById('wave-viz').style.display = 'none';
+    document.getElementById('record-status').textContent = '';
+  }
+
+  async function processRecordedAudio() {
+    const duration = recordingSeconds;
+    const description = `Audio recording captured: ${duration} seconds of baby crying/sounds. ` +
+      `The caregiver recorded this in real-time to identify the cause of distress.`;
+    await runAnalysis(description, 'audio_recording');
+  }
+
+  // ---- File Upload ----
+  window.handleFileUpload = async function(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    const type = file.type.startsWith('video') ? 'video' : 'audio';
+    const description = `Uploaded ${type} file: "${file.name}" (${(file.size / 1024).toFixed(1)}KB, type: ${file.type}). ` +
+      `This is a ${type} recording of a baby that needs cry/cue analysis.`;
+    
+    await runAnalysis(description, type + '_upload');
+    event.target.value = '';
+  };
+
+  // ---- Describe Mode ----
+  window.showDescribeMode = function() {
+    const sec = document.getElementById('describe-section');
+    sec.style.display = sec.style.display === 'none' ? 'block' : 'none';
+  };
+
+  window.addQuickCue = function(cue) {
+    const input = document.getElementById('describe-input');
+    const current = input.value.trim();
+    if (current) {
+      input.value = current + ', ' + cue.toLowerCase();
+    } else {
+      input.value = cue;
+    }
+  };
+
+  window.analyzeDescription = async function() {
+    const desc = document.getElementById('describe-input').value.trim();
+    if (!desc) {
+      showToast('Please describe what you observe! ✏️');
+      return;
+    }
+    await runAnalysis(desc, 'text_description');
+  };
+
+  // ---- Main Analysis ----
+  async function runAnalysis(inputDescription, inputType) {
+    // Show analyzing
+    showSection('analyzing');
+    animateProgress();
+
+    const ctx = getContext();
+    const baseline = getBaseline();
+
+    const prompt = `You are an expert pediatric infant cry and body language analyst. You have deep knowledge of infant development, common causes of distress at different ages, and when to escalate to medical professionals.
+
+TASK: Analyze the following infant observation and provide a comprehensive assessment.
+
+INFANT PROFILE:
+- Name: ${state.babyName || 'Unknown'}
+- Age: ${state.babyAge ? state.babyAge + ' months' : 'Unknown'}
+- Known sensitivities: ${state.notes || 'None noted'}
+- Previous patterns: ${baseline}
+
+OBSERVATION INPUT (type: ${inputType}):
+${inputDescription}
+
+CONTEXT:
+- Last fed: ${ctx.fed || 'Unknown'}
+- Last nap: ${ctx.nap || 'Unknown'}
+- Last diaper change: ${ctx.diaper || 'Unknown'}  
+- Environment temperature: ${ctx.temp || 'Normal'}
+
+INSTRUCTIONS:
+1. Classify the most likely causes of the cry/distress
+2. Consider the baby's age, context, and any baseline patterns
+3. Provide prioritized action suggestions
+4. Generate a calming script the caregiver can use
+5. Assess if there are any pediatric alert thresholds met
+
+Return EXACTLY this JSON structure with these types:
+{
+  "causes": [
+    {
+      "cause": string (one of: "hunger", "tiredness", "pain", "discomfort", "overstimulation", "gas/colic", "loneliness", "illness", "teething", "other"),
+      "confidence": number (0-100, percentage confidence),
+      "emoji": string (single emoji representing this cause),
+      "reasoning": string (brief explanation of why this cause is suspected)
+    }
+  ] (array of 3-5 causes sorted by confidence descending),
+  "primaryCause": string (the most likely cause name),
+  "primaryEmoji": string (emoji for primary cause),
+  "primaryConfidence": number (0-100),
+  "actionSteps": [
+    {
+      "step": string (clear actionable instruction),
+      "priority": string (one of: "immediate", "next", "monitor"),
+      "emoji": string (relevant emoji)
+    }
+  ] (array of 3-5 action steps sorted by priority),
+  "calmingScript": string (a soothing, warm script of 3-4 sentences the caregiver can read aloud or use as guidance to soothe the baby, written in second person addressing the baby),
+  "pediatricAlert": boolean (true if symptoms suggest need for medical attention),
+  "alertMessage": string (if pediatricAlert is true, explain why and what to watch for; if false, empty string),
+  "summary": string (one-sentence summary of the analysis for history log),
+  "severityLevel": string (one of: "low", "moderate", "high")
+}`;
+
+    try {
+      const result = await callAI('genericAI', { prompt });
+      
+      // Parse result
+      let analysis;
+      if (typeof result === 'object' && result.causes) {
+        analysis = result;
+      } else if (typeof result === 'string') {
+        analysis = JSON.parse(result);
+      } else {
+        // Try to extract from nested structure
+        const keys = Object.keys(result);
+        for (const k of keys) {
+          if (typeof result[k] === 'object' && result[k].causes) {
+            analysis = result[k];
+            break;
+          }
+        }
+        if (!analysis) analysis = result;
+      }
+
+      // Save to history
+      const entry = {
+        id: Date.now(),
+        timestamp: new Date().toISOString(),
+        inputType,
+        inputDescription: inputDescription.substring(0, 200),
+        analysis,
+        feedback: null
+      };
+      state.history.unshift(entry);
+      if (state.history.length > 50) state.history.pop();
+      saveState();
+
+      // Display results
+      displayResults(analysis, entry.id);
+    } catch(e) {
+      showSection('record');
+      showToast(e.message || 'Analysis failed. Please try again! 🔄');
+    }
+  }
+
+  function getContext() {
+    return {
+      fed: document.getElementById('ctx-fed').value,
+      nap: document.getElementById('ctx-nap').value,
+      diaper: document.getElementById('ctx-diaper').value,
+      temp: document.getElementById('ctx-temp').value
+    };
+  }
+
+  function getBaseline() {
+    if (state.feedbackHistory.length === 0) return 'No baseline data yet.';
+    const counts = {};
+    state.feedbackHistory.slice(-20).forEach(f => {
+      counts[f] = (counts[f] || 0) + 1;
+    });
+    const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    return `Most common causes from feedback: ${sorted.map(([c, n]) => `${c}(${n})`).join(', ')}`;
+  }
+
+  function animateProgress() {
+    let pct = 0;
+    const bar = document.getElementById('progress-bar');
+    const texts = [
+      ['Analyzing cry patterns...', 'Identifying pitch and rhythm 🎵'],
+      ['Evaluating body cues...', 'Checking posture and movements 👀'],
+      ['Cross-referencing baseline...', 'Personalizing to your baby 🧬'],
+      ['Generating recommendations...', 'Almost there! 💡']
+    ];
+    let step = 0;
+    const interval = setInterval(() => {
+      pct += Math.random() * 15 + 5;
+      if (pct > 90) pct = 90;
+      bar.style.width = pct + '%';
+      if (step < texts.length && pct > (step + 1) * 22) {
+        document.getElementById('analyzing-text').textContent = texts[step][0];
+        document.getElementById('analyzing-sub').textContent = texts[step][1];
+        step++;
+      }
+    }, 400);
+    
+    // Store interval to clear later
+    window._progressInterval = interval;
+  }
+
+  // ---- Display Results ----
+  function displayResults(analysis, entryId) {
+    if (window._progressInterval) clearInterval(window._progressInterval);
+    document.getElementById('progress-bar').style.width = '100%';
+    
+    setTimeout(() => {
+      showSection('results');
+      window._currentEntryId = entryId;
+
+      // Primary cause
+      const primary = document.getElementById('primary-cause');
+      const severityColors = {
+        low: 'bg-green-50 border-green-200',
+        moderate: 'bg-yellow-50 border-yellow-200',
+        high: 'bg-red-50 border-red-200'
+      };
+      const sevClass = severityColors[analysis.severityLevel] || severityColors.low;
+      
+      primary.innerHTML = `
+        <div class="flex items-center gap-3 mb-3">
+          <div class="w-14 h-14 rounded-2xl ${sevClass} border-2 flex items-center justify-center text-3xl">
+            ${analysis.primaryEmoji || '👶'}
+          </div>
+          <div class="flex-1">
+            <p class="font-extrabold text-gray-800 text-lg capitalize">${analysis.primaryCause || 'Unknown'}</p>
+            <div class="flex items-center gap-2 mt-1">
+              <div class="flex-1 bg-gray-200 rounded-full h-2 overflow-hidden">
+                <div class="h-full gradient-bg rounded-full progress-bar" style="width:${analysis.primaryConfidence || 50}%"></div>
+              </div>
+              <span class="text-xs font-bold text-gray-500">${analysis.primaryConfidence || 50}%</span>
+            </div>
+          </div>
+        </div>
+        <p class="text-gray-500 text-sm">${analysis.summary || ''}</p>
+      `;
+
+      // All causes
+      const allCauses = document.getElementById('all-causes');
+      allCauses.innerHTML = '<p class="text-xs font-bold text-gray-500 mb-2">📊 All Possible Causes</p>';
+      
+      if (analysis.causes && analysis.causes.length > 0) {
+        analysis.causes.forEach(c => {
+          const conf = c.confidence || 0;
+          const barColor = conf >= 60 ? 'bg-gradient-to-r from-pink-400 to-purple-400' : conf >= 30 ? 'bg-gradient-to-r from-yellow-400 to-orange-400' : 'bg-gray-300';
+          allCauses.innerHTML += `
+            <div class="cause-card bg-white rounded-xl p-3 card-shadow flex items-center gap-3">
+              <span class="text-xl">${c.emoji || '❓'}</span>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center justify-between">
+                  <span class="text-sm font-bold text-gray-700 capitalize">${c.cause}</span>
+                  <span class="text-xs font-bold text-gray-400">${conf}%</span>
+                </div>
+                <div class="w-full bg-gray-100 rounded-full h-1.5 mt-1 overflow-hidden">
+                  <div class="${barColor} h-full rounded-full progress-bar" style="width:${conf}%"></div>
+                </div>
+                <p class="text-xs text-gray-400 mt-1 truncate">${c.reasoning || ''}</p>
+              </div>
+            </div>
+          `;
+        });
+      }
+
+      // Action steps
+      const actionList = document.getElementById('action-list');
+      actionList.innerHTML = '';
+      if (analysis.actionSteps) {
+        const priorityColors = { immediate: 'bg-red-100 text-red-700', next: 'bg-yellow-100 text-yellow-700', monitor: 'bg-blue-100 text-blue-700' };
+        analysis.actionSteps.forEach((a, i) => {
+          const pColor = priorityColors[a.priority] || priorityColors.monitor;
+          actionList.innerHTML += `
+            <div class="flex items-start gap-3 ${i > 0 ? 'pt-2' : ''}">
+              <span class="text-lg mt-0.5">${a.emoji || '•'}</span>
+              <div class="flex-1">
+                <p class="text-sm text-gray-700">${a.step}</p>
+                <span class="inline-block text-xs font-bold px-2 py-0.5 rounded-full mt-1 ${pColor}">${a.priority}</span>
+              </div>
+            </div>
+          `;
+        });
+      }
+
+      // Calming script
+      document.getElementById('calming-text').textContent = analysis.calmingScript || 'Shh, everything is going to be alright, little one. You are safe and loved. 💜';
+
+      // Pediatric alert
+      const alertEl = document.getElementById('pediatric-alert');
+      if (analysis.pediatricAlert) {
+        alertEl.style.display = 'block';
+        document.getElementById('alert-text').textContent = analysis.alertMessage || 'Consider consulting your pediatrician.';
+      } else {
+        alertEl.style.display = 'none';
+      }
+    }, 600);
+  }
+
+  // ---- Feedback ----
+  window.submitFeedback = function(cause) {
+    state.feedbackHistory.push(cause);
+    if (state.feedbackHistory.length > 100) state.feedbackHistory.shift();
+    
+    // Update history entry
+    if (window._currentEntryId) {
+      const entry = state.history.find(h => h.id === window._currentEntryId);
+      if (entry) entry.feedback = cause;
+    }
+    saveState();
+    showToast(`Thanks! Noted as "${cause}" — I'll get smarter! 🧠✨`);
+  };
+
+  // ---- History ----
+  window.showHistory = function() {
+    showSection('history');
+    renderHistory();
+  };
+
+  window.hideHistory = function() {
+    showSection('record');
+  };
+
+  function renderHistory() {
+    const list = document.getElementById('history-list');
+    const empty = document.getElementById('history-empty');
+    
+    if (state.history.length === 0) {
+      list.innerHTML = '';
+      empty.style.display = 'block';
+      return;
+    }
+    
+    empty.style.display = 'none';
+    list.innerHTML = state.history.slice(0, 20).map(h => {
+      const a = h.analysis || {};
+      const time = new Date(h.timestamp).toLocaleString();
+      return `
+        <div class="bg-white rounded-xl p-4 card-shadow">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+              <span class="text-xl">${a.primaryEmoji || '👶'}</span>
+              <span class="font-bold text-sm text-gray-700 capitalize">${a.primaryCause || 'Unknown'}</span>
+              <span class="text-xs bg-purple-100 text-purple-600 px-2 py-0.5 rounded-full">${a.primaryConfidence || 0}%</span>
+            </div>
+            ${h.feedback ? `<span class="text-xs bg-green-100 text-green-600 px-2 py-0.5 rounded-full">✓ ${h.feedback}</span>` : ''}
+          </div>
+          <p class="text-xs text-gray-400">${time} • ${h.inputType}</p>
+          <p class="text-xs text-gray-500 mt-1">${a.summary || ''}</p>
+        </div>
+      `;
+    }).join('');
+  }
+
+  // ---- Settings ----
+  window.showSettings = function() {
+    showSection('settings');
+    document.getElementById('setting-name').value = state.babyName;
+    document.getElementById('setting-age').value = state.babyAge;
+    document.getElementById('setting-notes').value = state.notes || '';
+    
+    // Baseline stats
+    const stats = document.getElementById('baseline-stats');
+    if (state.feedbackHistory.length > 0) {
+      const counts = {};
+      state.feedbackHistory.forEach(f => counts[f] = (counts[f] || 0) + 1);
+      const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+      stats.textContent = `${state.history.length} analyses, ${state.feedbackHistory.length} feedback entries. Top causes: ${sorted.map(([c, n]) => `${c} (${n})`).join(', ')}`;
+    } else {
+      stats.textContent = `${state.history.length} analyses. No feedback yet — give feedback after analyses to build your baby's baseline!`;
+    }
+  };
+
+  window.hideSettings = function() {
+    showSection('record');
+  };
+
+  window.saveSettings = function() {
+    state.babyName = document.getElementById('setting-name').value.trim();
+    state.babyAge = document.getElementById('setting-age').value.trim();
+    state.notes = document.getElementById('setting-notes').value.trim();
+    saveState();
+    updateGreeting();
+    showToast('Settings saved! 💾');
+  };
+
+  window.clearAllData = function() {
+    if (confirm('This will erase all history and settings. Are you sure?')) {
+      localStorage.removeItem('crycue_state');
+      state = { babyName: '', babyAge: '', notes: '', history: [], feedbackHistory: [], onboarded: true };
+      saveState();
+      updateGreeting();
+      showToast('All data cleared 🗑️');
+      hideSettings();
+    }
+  };
+
+  // ---- Section Management ----
+  function showSection(section) {
+    const sections = ['record', 'analyzing', 'results', 'history', 'settings'];
+    sections.forEach(s => {
+      const el = document.getElementById(s + '-section');
+      if (el) el.style.display = s === section ? '' : 'none';
+    });
+    
+    // Update quick status
+    const qs = document.getElementById('quick-status');
+    const statuses = {
+      record: { emoji: '😴', title: 'Ready to listen', sub: 'Tap the big button below to start' },
+      analyzing: { emoji: '🔄', title: 'Analyzing...', sub: 'Please wait a moment' },
+      results: { emoji: '✅', title: 'Analysis complete', sub: 'See results below' },
+      history: { emoji: '📋', title: 'History', sub: `${state.history.length} past analyses` },
+      settings: { emoji: '⚙️', title: 'Settings', sub: 'Customize your experience' }
+    };
+    const s = statuses[section] || statuses.record;
+    qs.innerHTML = `
+      <span class="text-2xl">${s.emoji}</span>
+      <div>
+        <p class="text-white text-sm font-bold">${s.title}</p>
+        <p class="text-white/70 text-xs">${s.sub}</p>
+      </div>
+    `;
+  }
+
+  window.resetToRecord = function() {
+    showSection('record');
+    document.getElementById('describe-input').value = '';
+    document.getElementById('describe-section').style.display = 'none';
+  };
+
+  // ---- Toast ----
+  function showToast(msg) {
+    const toast = document.getElementById('toast');
+    toast.textContent = msg;
+    toast.style.display = 'block';
+    toast.style.opacity = '1';
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      setTimeout(() => { toast.style.display = 'none'; }, 300);
+    }, 3000);
+  }
+  window.showToast = showToast;
+
+})();
+</script>
+</body>
+</html>
